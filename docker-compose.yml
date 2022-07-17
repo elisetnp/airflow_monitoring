@@ -1,0 +1,139 @@
+version: '3.7'
+
+# ====================================== AIRFLOW ENVIRONMENT VARIABLES =======================================
+x-environment: &airflow_environment
+  - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+  - AIRFLOW__CORE__FERNET_KEY=YlCImzjge_TeZc7jPJ7Jz2pgOtb4yTssA1pVyqIADWg=
+  - AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS=False
+  - AIRFLOW__CORE__LOAD_EXAMPLES=False
+  - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow
+  - AIRFLOW__CORE__STORE_DAG_CODE=True
+  - AIRFLOW__CORE__STORE_SERIALIZED_DAGS=True
+  - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+  - AIRFLOW_CONN_MY_POSTGRES=postgresql://airflow:airflow@wiki_results:5432/airflow
+  - AIRFLOW__METRICS__STATSD_HOST=statsd_exporter
+  - AIRFLOW__METRICS__STATSD_ON=True
+  - AIRFLOW__METRICS__STATSD_PORT=9125
+  - AIRFLOW__METRICS__STATSD_PREFIX=airflow
+  - AIRFLOW__METRICS__STATSD_ALLOW_LIST=scheduler,executor,dagrun,dag_processing,dag,pool,ti
+  #- AIRFLOW__CORE__LOGGING_LEVEL=DEBUG
+
+x-airflow-image: &airflow_image apache/airflow:2.2.2-python3.6
+# ====================================== /AIRFLOW ENVIRONMENT VARIABLES ======================================
+
+services:
+  postgres:
+    image: postgres:12-alpine
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+
+  wiki_results:
+    image: postgres:12-alpine
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./scripts/create_table.sql:/docker-entrypoint-initdb.d/create_table.sql
+
+  init:
+    build:
+      context: docker
+      args:
+        AIRFLOW_BASE_IMAGE: *airflow_image
+    depends_on:
+      - postgres
+    environment: *airflow_environment
+    entrypoint: /bin/bash
+    command: -c 'airflow db init && airflow users create --username admin --password admin --firstname Anonymous --lastname Admin --role Admin --email admin@example.org'
+
+  webserver:
+    build:
+      context: docker
+      args:
+        AIRFLOW_BASE_IMAGE: *airflow_image
+    restart: always
+    depends_on:
+      - postgres
+    ports:
+      - "8081:8080"
+    volumes:
+      - logs:/opt/airflow/logs
+    environment: *airflow_environment
+    container_name: webserver
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  scheduler:
+    build:
+      context: docker
+      args:
+        AIRFLOW_BASE_IMAGE: *airflow_image
+    restart: always
+    container_name: scheduler
+    depends_on:
+      - postgres
+    volumes:
+      - logs:/opt/airflow/logs
+      - ./dags:/opt/airflow/dags
+    environment: *airflow_environment
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  statsd_exporter:
+    image: prom/statsd-exporter:v0.18.0
+    restart: always
+    container_name: statsd_exporter
+    volumes:
+      - ./files/statsd_mapping.yml:/tmp/statsd_mapping.yml
+    ports:
+      - "9102:9102"
+      - "9125:9125/udp"
+    command: --statsd.mapping-config=/tmp/statsd_mapping.yml
+
+  prometheus:
+    image: prom/prometheus:v2.22.0
+    restart: always
+    volumes:
+      - ./files/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    command:
+      - --web.enable-admin-api
+      - --web.enable-lifecycle
+      # Flags below are defaults, but must be added explicitly, otherwise would be overridden by flags above
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+
+  grafana:
+    image: grafana/grafana:7.2.1
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./files/grafana/provisioning/:/etc/grafana/provisioning/
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+
+volumes:
+  logs:
