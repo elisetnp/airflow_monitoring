@@ -14,14 +14,14 @@ Topics covered are monitoring, logging, etc. An accompanying Docker Compose setu
 
 ## Usage
 
-To get started with the code examples, start Airflow with Docker Compose with the following command:
+To get started with the code examples, adapt your environment variables in `docker-compose.yml` if needed, then start Airflow with Docker Compose with the following command:
 
 ```bash
 docker-compose up -d
 ```
 
 The webserver initializes a few things, so wait for a few seconds, and you should be able to access the
-Airflow webserver at http://localhost:8080.
+Airflow webserver at http://localhost:8081.
 
 To stop running the examples, run the following command:
 
@@ -38,4 +38,4 @@ docker-compose down -v
 
 Now, it is time to view the dashboard
 * Login to Grafana dashboards `http://localhost:3000/dashboards` using credentials `admin/admin`.
-* Click on the dashboard `Airflow` to view the simple DAG and task
+* Click on the dashboard `Airflow` to view the simple DAG and task.
