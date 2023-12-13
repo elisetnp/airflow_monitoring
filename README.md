@@ -31,7 +31,7 @@ docker-compose down -v
 
 ### Run DAGs
 
-* Login to Airflow `http://localhost:8080` with credentials `admin/admin`.
+* Login to Airflow `http://localhost:8081` with credentials `admin/admin`.
 * Enable the DAG and start. No need to pass any configurations.
 
 ### View Grafana dashboard
